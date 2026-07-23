@@ -2,7 +2,7 @@
  * createAdmin.js — One-time admin seed script.
  *
  * Run ONCE to create the first admin account in MongoDB:
- *   node src/scripts/createAdmin.js
+ *   node scripts/createAdmin.js
  *
  * After running, log in with:
  *   username: admin
@@ -19,7 +19,7 @@ import { dirname, resolve } from "path";
 
 // Load .env
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../.env") });
+dotenv.config({ path: resolve(__dirname, "../.env") });
 
 // ─── CONFIGURE THESE BEFORE RUNNING ──────────────────────────
 const ADMIN_USERNAME = "admin";

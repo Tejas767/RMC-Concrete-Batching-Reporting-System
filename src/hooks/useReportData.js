@@ -1,15 +1,34 @@
 /**
- * useReportData.js — Custom hook to compute the autographic report rows.
+ * ==============================================================================
+ * CUSTOM HOOK: useReportData (useReportData.js)
+ * ==============================================================================
+ * PURPOSE:
+ *  Computes the autographic record batch rows, target set weights, and actual totals
+ *  for printing dockets and generating autographic reports.
  *
- * Individual batch rows: small fixed variation (±1 per batch) for realistic display.
- * Total Actual: controlled by the operator's DIFFERENCE row setting.
- *   → Total Actual = Total Set Weight ± Difference (operator configured)
+ * ADVANCED ALGORITHMIC CONCEPTS (Interview Talking Points):
+ *  1. Seeded Deterministic PRNG (Mulberry32 + FNV-1a Hash):
+ *     Instead of standard `Math.random()` (which produces different numbers on every render),
+ *     we hash docket metadata (`docketNo`, `customerName`, `grade`, `qty`) using FNV-1a
+ *     to seed a Mulberry32 PRNG.
+ *     Result: The report values remain EXACTLY identical whenever you open, view,
+ *     or print the same batch record!
+ *
+ *  2. Memoization with `useMemo`:
+ *     Heavy calculations (looping over batch rows and summing totals) are cached
+ *     and recomputed ONLY when input props (`entry`, `targets`, `batchSize`, `differences`) change.
+ * ==============================================================================
  */
+
 "use client";
 
 import { useMemo } from "react";
-import { MIXER_CAPACITY, reportColumns, defaultDifferences } from "@/constants/mixConfig";
+import { MIXER_CAPACITY, defaultDifferences } from "@/constants/mixConfig";
 
+/**
+ * FNV-1a 32-bit Hash Function
+ * Converts a string into a deterministic integer seed.
+ */
 function hashSeed(input) {
   let h = 2166136261;
   for (let i = 0; i < input.length; i += 1) {
@@ -19,6 +38,10 @@ function hashSeed(input) {
   return h >>> 0;
 }
 
+/**
+ * Mulberry32 Pseudo-Random Number Generator (PRNG)
+ * Produces reproducible random numbers between [0, 1) based on an initial seed.
+ */
 function mulberry32(seed) {
   let t = seed;
   return () => {
@@ -29,15 +52,19 @@ function mulberry32(seed) {
   };
 }
 
+/**
+ * Returns a random integer between min and max (inclusive) using a seeded PRNG.
+ */
 function randBetween(rng, min, max) {
   return Math.floor(rng() * (max - min + 1)) + min;
 }
 
-// Returns a deterministic offset with meaningful magnitude between [diff/2, diff]
-// This guarantees the gap between Set Weight and Actual is always noticeable.
+/**
+ * Returns a deterministic offset with meaningful magnitude between [diff/2, diff].
+ * Guarantees the gap between Set Weight and Actual is always noticeable for quality logs.
+ */
 function randOffset(rng, diff) {
   const direction  = rng() >= 0.5 ? 1 : -1;
-  // Magnitude: always between 50% and 100% of diff (never near-zero)
   const minMag     = Math.max(1, Math.ceil(diff * 0.5));
   const magnitude  = minMag + Math.floor(rng() * (diff - minMag + 1));
   return direction * magnitude;
@@ -45,67 +72,68 @@ function randOffset(rng, diff) {
 
 export function useReportData(entry, targets, batchSize = MIXER_CAPACITY, differences = {}) {
   return useMemo(() => {
+    // 1. Generate deterministic seed from entry metadata
     const seed = hashSeed(`${entry.docketNo}-${entry.customerName}-${entry.grade}-${entry.qty}`);
+    
     // Two separate RNG streams: one for per-row display, one for totals
     const rowRng   = mulberry32(seed);
-    const totalRng = mulberry32(seed ^ 0xdeadbeef); // different stream for totals
+    const totalRng = mulberry32(seed ^ 0xdeadbeef);
 
     const productionQty = Number(entry.qty || 0);
     const capacity = Number(batchSize || MIXER_CAPACITY);
 
-    // TotalBatches = Fix(ProdQty / Capacity)
+    // Calculate total batch iterations: TotalBatches = Math.floor(ProdQty / Capacity)
     let totalBatches = 0;
     if (productionQty > 0 && capacity > 0) {
       totalBatches = Math.floor(productionQty / capacity);
     }
 
-    // Resolve operator's difference setting, fallback to defaultDifferences
+    // Resolve difference tolerance configuration
     const getDiff = (key) => {
       const val = differences[key];
       if (val !== undefined && val !== null && val !== "") return Number(val);
       return defaultDifferences[key] ?? 0;
     };
 
-    // ── STEP 1: Generate per-batch rows using ORIGINAL VBA variance logic ──
-    // These use the fixed, hardcoded ranges from the VBA specification:
-    //   Aggregates  : ±3   Cement: ±2   Water: ±4   Ice/Silica: ±1   Admix: ±0.07
-    // The operator's DIFFERENCE row does NOT affect individual batch rows.
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 1: Generate per-batch rows with realistic industrial tolerance values
+    // ──────────────────────────────────────────────────────────────────────────
     const rows = [];
 
     for (let i = 0; i < totalBatches; i += 1) {
       const row = { id: i + 1 };
-
       const t = (key) => Number(targets[key]) || 0;
 
-      // Group: Aggregate — original VBA ±3
+      // Aggregates: ±2 kg variance
       row.mm10  = t("mm10")   > 0 ? t("mm10")   + randBetween(rowRng, -2, 2) : 0;
       row.cSan  = t("cSan")   > 0 ? t("cSan")   + randBetween(rowRng, -2, 2) : 0;
       row.moi   = "0.0";
       row.cSand = t("cSand")  > 0 ? t("cSand")  + randBetween(rowRng, -2, 2) : 0;
       row.mm20  = t("mm20")   > 0 ? t("mm20")   + randBetween(rowRng, -2, 2) : 0;
 
-      // Group: Cement — original VBA ±2
+      // Cementitious Materials: ±2 kg variance
       row.cem1   = t("cem1")   > 0 ? t("cem1")   + randBetween(rowRng, -2, 2) : 0;
       row.ggbs   = t("ggbs")   > 0 ? t("ggbs")   + randBetween(rowRng, -2, 2) : 0;
       row.flyAsh = t("flyAsh") > 0 ? t("flyAsh") + randBetween(rowRng, -2, 2) : 0;
 
-      // Group: Water / Ice — original VBA ±1 for ice, ±4 for water
+      // Water & Ice: ±1 for ice, ±2 for water
       row.watIce = t("watIce") > 0 ? t("watIce") + randBetween(rowRng, -1, 1) : 0;
       row.pm     = 0;
       row.water  = t("water")  > 0 ? t("water")  + randBetween(rowRng, -2, 2) : 0;
 
-      // Group: Silica — original VBA ±1
+      // Silica Fume: ±1
       row.silica = t("silica") > 0 ? t("silica") + randBetween(rowRng, -1, 1) : 0;
 
-      // Group: Admixture — original VBA ±0.07 floating point
+      // Chemical Admixtures: floating point precision ±0.04 kg
       row.admix1 = t("admix1") > 0 ? Number((t("admix1") + (rowRng() - 0.5) * 0.04).toFixed(2)) : 0.00;
       row.admix2 = t("admix2") > 0 ? Number((t("admix2") + (rowRng() - 0.5) * 0.04).toFixed(2)) : 0.00;
 
       rows.push(row);
     }
 
-    // ── STEP 2: Total Actual = accurate sum of all individual batch rows ──
-    // This is the real machine measurement — NOT modified by the DIFFERENCE setting.
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 2: Compute Total Actual Weights (Sum of all batch rows)
+    // ──────────────────────────────────────────────────────────────────────────
     const totals = {
       mm10:   rows.reduce((sum, r) => sum + (r.mm10   || 0), 0),
       cSan:   rows.reduce((sum, r) => sum + (r.cSan   || 0), 0),
@@ -121,9 +149,9 @@ export function useReportData(entry, targets, batchSize = MIXER_CAPACITY, differ
       admix2: rows.reduce((sum, r) => sum + (r.admix2 || 0), 0),
     };
 
-    // ── STEP 3: Total Set Weight = Total Actual ± operator's DIFFERENCE ──
-    // IMPORTANT: Anchored to Total Actual (not the base), so the gap between
-    //   Total Set Weight and Total Actual is ALWAYS within ±DIFFERENCE.
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 3: Compute Target Set Weights (Total Actual ± Tolerated Difference)
+    // ──────────────────────────────────────────────────────────────────────────
     const calcSetWeight = (key, isAdmix = false) => {
       const base   = (Number(targets[key]) || 0) * totalBatches;
       if (base === 0) return isAdmix ? 0.00 : 0;
@@ -133,21 +161,17 @@ export function useReportData(entry, targets, batchSize = MIXER_CAPACITY, differ
         ? Number((totals[key] || 0).toFixed(2))
         : Math.round(totals[key] || 0);
 
-      // If operator sets difference to 0, set weight equals actual (no gap)
       if (diff === 0) return actual;
 
-      // Anchor = Total Actual. Apply ±DIFFERENCE to get Set Weight.
       const offset = randOffset(totalRng, diff);
       const raw    = actual + offset;
 
       if (isAdmix) {
         let r = Number(raw.toFixed(2));
-        // Guarantee Set Weight ≠ Total Actual
         if (r === actual) r = Number((r + (offset >= 0 ? 0.01 : -0.01)).toFixed(2));
         return r;
       } else {
         let r = Math.round(raw);
-        // Guarantee Set Weight ≠ Total Actual
         if (r === actual) r += (offset >= 0 ? 1 : -1);
         return r;
       }
@@ -171,5 +195,3 @@ export function useReportData(entry, targets, batchSize = MIXER_CAPACITY, differ
     return { rows, totals, setWeights, totalBatches, productionQty };
   }, [entry, targets, batchSize, differences]);
 }
-
-

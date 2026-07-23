@@ -1,12 +1,39 @@
+/**
+ * ==============================================================================
+ * SECURITY & AUTHENTICATION UTILITY: auth.js
+ * ==============================================================================
+ * PURPOSE:
+ *  Handles password hashing (bcryptjs), JWT token signing/verification (jose),
+ *  and HTTP-Only session cookie management.
+ *
+ * KEY SECURITY CONCEPTS (Interview Talking Points):
+ *  1. HTTP-Only Cookies:
+ *     Session tokens are stored in `httpOnly: true` cookies. This makes it impossible
+ *     for client-side JavaScript (`document.cookie` or malicious XSS scripts) to read
+ *     or steal the JWT session.
+ *
+ *  2. Edge-Compatible JWT Library (`jose`):
+ *     Next.js middleware runs on V8 edge runtimes where Node.js native `crypto` modules
+ *     aren't always available. `jose` is a modern, lightweight Web Crypto API standard.
+ *
+ *  3. Password Salt Rounds:
+ *     Bcrypt salt factor of 10 balances cryptographic resistance against brute-force
+ *     attacks while maintaining fast response times (~100ms hash time).
+ * ==============================================================================
+ */
+
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const secretKey = process.env.JWT_SECRET || "default-dev-secret-key-change-in-prod";
-const encodedKey = new TextEncoder().encode(secretKey);
+const secretKey = process.env.JWT_SECRET;
+if (!secretKey) {
+  console.error("⚠️  CRITICAL: JWT_SECRET is not set in environment variables.");
+}
+const encodedKey = new TextEncoder().encode(secretKey ?? "");
 
 /**
- * Hash a plain text password using bcrypt
+ * HASH PASSWORD: Uses bcrypt with salt factor 10.
  */
 export async function hashPassword(plainTextPassword) {
   const salt = await bcrypt.genSalt(10);
@@ -14,14 +41,14 @@ export async function hashPassword(plainTextPassword) {
 }
 
 /**
- * Compare a plain text password with a bcrypt hash
+ * VERIFY PASSWORD: Compares user plain text password with stored bcrypt hash.
  */
 export async function verifyPassword(plainTextPassword, hash) {
   return bcrypt.compare(plainTextPassword, hash);
 }
 
 /**
- * Sign a payload into a JWT token
+ * SIGN TOKEN: Creates a signed JWT valid for 7 days.
  */
 export async function signToken(payload) {
   return new SignJWT(payload)
@@ -32,7 +59,7 @@ export async function signToken(payload) {
 }
 
 /**
- * Verify a JWT token and extract the payload
+ * VERIFY TOKEN: Decodes and verifies JWT signature. Returns null if invalid or expired.
  */
 export async function verifyToken(token) {
   try {
@@ -44,7 +71,7 @@ export async function verifyToken(token) {
 }
 
 /**
- * Create a session cookie with user info in the JWT
+ * SET SESSION COOKIE: Stores signed JWT in an HTTP-Only secure cookie.
  */
 export async function setSessionCookie(userId, username, role) {
   const payload = { id: userId, username, role };
@@ -52,16 +79,16 @@ export async function setSessionCookie(userId, username, role) {
 
   const cookieStore = await cookies();
   cookieStore.set("session", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    httpOnly: true,                               // XSS protection
+    secure: process.env.NODE_ENV === "production", // Only HTTPS in production
+    sameSite: "lax",                              // CSRF protection
     path: "/",
-    maxAge: 7 * 24 * 60 * 60, // 7 days
+    maxAge: 7 * 24 * 60 * 60,                     // 7 days expiration
   });
 }
 
 /**
- * Clear the session cookie
+ * CLEAR SESSION COOKIE: Removes session cookie on logout.
  */
 export async function clearSessionCookie() {
   const cookieStore = await cookies();
@@ -69,7 +96,7 @@ export async function clearSessionCookie() {
 }
 
 /**
- * Get the current session payload from the cookie
+ * GET SESSION: Reads and verifies session payload from request cookies.
  */
 export async function getSession() {
   const cookieStore = await cookies();

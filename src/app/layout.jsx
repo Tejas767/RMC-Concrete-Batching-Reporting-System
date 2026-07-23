@@ -14,11 +14,7 @@ const splineMono = Spline_Sans_Mono({
   display: "swap",
 });
 
-/* ─── SEO Metadata ─────────────────────────────
-   Placed here so every page inherits it.
-   Individual pages can override via their own
-   export const metadata = { ... }.
-──────────────────────────────────────────────── */
+/* ─── SEO Metadata ───────────────────────────── */
 export const metadata = {
   title: {
     default: "Concrete Batching System",
@@ -47,7 +43,6 @@ export const metadata = {
   },
 };
 
-// Viewport and themeColor must be separate exports in Next.js 15+
 export const viewport = {
   width: "device-width",
   initialScale: 1,
@@ -57,9 +52,7 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body
-        className={`${sora.variable} ${splineMono.variable} antialiased`}
-      >
+      <body className={`${sora.variable} ${splineMono.variable} antialiased`}>
         <Toaster position="top-center" richColors duration={2500} />
         {children}
       </body>

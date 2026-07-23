@@ -6,7 +6,7 @@ import { dirname, resolve } from "path";
 
 // Load .env
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../.env") });
+dotenv.config({ path: resolve(__dirname, "../.env") });
 
 // ─── CONFIGURE YOUR NEW PASSWORD HERE ───────────────
 const NEW_PASSWORD = "YOUR_NEW_SECRET_PASSWORD_HERE"; 

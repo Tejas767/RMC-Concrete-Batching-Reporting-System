@@ -4,21 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
 import { motion } from "framer-motion";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
 import { User, Lock, LogIn, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  
+
   // Instantly push active sessions to their proper dashboard
   useSession({ redirectIfFound: true, redirectTo: "/" });
 
-  const [username, setUsername]       = useState("");
-  const [password, setPassword]       = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError]             = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,10 +58,8 @@ export default function LoginPage() {
       >
         {/* Card */}
         <div className="rounded-3xl border border-border bg-white p-8 shadow-card">
-
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-          
             <h1 className="text-2xl font-semibold text-brand-1">Welcome Back</h1>
             <p className="mt-1 text-sm text-muted text-center">
               Concrete Batching System
@@ -111,10 +107,10 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(v => !v)}
+                  onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-brand-1 transition-colors"
                 >
-                  {showPassword ? <EyeOff size={15}/> : <Eye size={15}/>}
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>

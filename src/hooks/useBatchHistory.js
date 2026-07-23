@@ -1,9 +1,23 @@
 /**
- * useBatchHistory.js — Connected to MongoDB via /api/history.
+ * ==============================================================================
+ * CUSTOM HOOK: useBatchHistory
+ * ==============================================================================
+ * PURPOSE:
+ *  Manages all batch history state, server-side pagination, search queries,
+ *  date filters, CRUD operations, and streaming CSV file exports.
  *
- * Server-side pagination: loads 50 records per page.
- * Scales to 70,000+ records without performance issues.
+ * ARCHITECTURAL DESIGN (Interview Talking Points):
+ *  1. Server-Side Pagination: Loads records in chunks of 50 per page. This
+ *     ensures browser memory remains light even if the database contains 100,000+ entries.
+ *
+ *  2. Search Debouncing: Implements a 500ms debounce timer via `useRef` when user
+ *     types in search filters. This prevents sending an HTTP request on every single keystroke.
+ *
+ *  3. Blob-Based Streaming File Downloads: CSV export fetches a binary `Blob`
+ *     from the backend streaming endpoint and triggers an automated browser download link.
+ * ==============================================================================
  */
+
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
@@ -11,20 +25,23 @@ import { useState, useCallback, useEffect, useRef } from "react";
 const PAGE_SIZE = 50;
 
 export function useBatchHistory() {
-  const [history, setHistory]           = useState([]);
-  const [loading, setLoading]           = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [historyQuery, setHistoryQuery] = useState("");
-  const [historyFrom, setHistoryFrom]   = useState("");
-  const [historyTo, setHistoryTo]       = useState("");
+  // Main records state
+  const [history, setHistory]               = useState([]);
+  const [loading, setLoading]               = useState(false);
+  const [isExporting, setIsExporting]       = useState(false);
+  const [historyQuery, setHistoryQuery]     = useState("");
+  const [historyFrom, setHistoryFrom]       = useState("");
+  const [historyTo, setHistoryTo]           = useState("");
   const [historyDetails, setHistoryDetails] = useState(null);
 
-  // ── Pagination state ────────────────────────────────────────
-  const [currentPage, setCurrentPage]   = useState(1);
-  const [totalPages, setTotalPages]     = useState(1);
-  const [totalCount, setTotalCount]     = useState(0);
+  // Pagination state tracking
+  const [currentPage, setCurrentPage]       = useState(1);
+  const [totalPages, setTotalPages]         = useState(1);
+  const [totalCount, setTotalCount]         = useState(0);
 
-  // ── Load from MongoDB (paginated) ───────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // 1. Fetch Paginated Records from API (/api/history)
+  // ──────────────────────────────────────────────────────────────────────────
   const loadHistory = useCallback(async (page = 1) => {
     setLoading(true);
     try {
@@ -40,7 +57,7 @@ export function useBatchHistory() {
 
       setHistory(json.data || []);
 
-      // Update pagination meta
+      // Update pagination state from server response
       if (json.pagination) {
         setCurrentPage(json.pagination.page);
         setTotalPages(json.pagination.totalPages);
@@ -53,7 +70,9 @@ export function useBatchHistory() {
     }
   }, [historyFrom, historyTo, historyQuery]);
 
-  // Auto-reload when filters change — reset to page 1
+  // ──────────────────────────────────────────────────────────────────────────
+  // 2. Debounce Search & Filter Input Changes (500ms Delay)
+  // ──────────────────────────────────────────────────────────────────────────
   const debounceTimer = useRef(null);
   useEffect(() => {
     clearTimeout(debounceTimer.current);
@@ -64,7 +83,9 @@ export function useBatchHistory() {
     return () => clearTimeout(debounceTimer.current);
   }, [historyFrom, historyTo, historyQuery, loadHistory]);
 
-  // Navigate pages
+  // ──────────────────────────────────────────────────────────────────────────
+  // 3. Pagination Controls (Page Navigation)
+  // ──────────────────────────────────────────────────────────────────────────
   const goToPage = useCallback((page) => {
     setCurrentPage(page);
     loadHistory(page);
@@ -78,7 +99,9 @@ export function useBatchHistory() {
     if (currentPage > 1) goToPage(currentPage - 1);
   }, [currentPage, goToPage]);
 
-  // ── Save a batch record to MongoDB ───────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // 4. Save Batch Record (POST request)
+  // ──────────────────────────────────────────────────────────────────────────
   const saveToHistory = useCallback(async (data) => {
     try {
       const res = await fetch("/api/history", {
@@ -92,11 +115,13 @@ export function useBatchHistory() {
       }
       return await res.json();
     } catch (err) {
-      throw err; // Re-throw to be caught by the UI
+      throw err;
     }
   }, []);
 
-  // ── Delete one record ────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // 5. Delete Single Record (DELETE request with ID)
+  // ──────────────────────────────────────────────────────────────────────────
   const deleteFromHistory = useCallback(async (id) => {
     try {
       await fetch(`/api/history?id=${id}`, { method: "DELETE" });
@@ -108,7 +133,9 @@ export function useBatchHistory() {
     }
   }, []);
 
-  // ── Clear all (1 DB call — instant even for 70,000+ records) ──
+  // ──────────────────────────────────────────────────────────────────────────
+  // 6. Bulk Delete All History (DELETE request with all=true)
+  // ──────────────────────────────────────────────────────────────────────────
   const clearAllHistory = useCallback(async () => {
     try {
       await fetch("/api/history?all=true", { method: "DELETE" });
@@ -121,7 +148,9 @@ export function useBatchHistory() {
     }
   }, []);
 
-  // ── Date quick filters ───────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // 7. Preset Date Filters (Today, Last 7 Days, This Month)
+  // ──────────────────────────────────────────────────────────────────────────
   const setToday = useCallback(() => {
     const v = new Date().toISOString().slice(0, 10);
     setHistoryFrom(v);
@@ -150,7 +179,9 @@ export function useBatchHistory() {
     setHistoryTo("");
   }, []);
 
-  // ── Export to CSV (streams from server — safe for 300K+ records) ──
+  // ──────────────────────────────────────────────────────────────────────────
+  // 8. Stream CSV Export File Download
+  // ──────────────────────────────────────────────────────────────────────────
   const exportToCSV = useCallback(async () => {
     setIsExporting(true);
     try {
@@ -166,13 +197,13 @@ export function useBatchHistory() {
         return;
       }
 
-      // Download the streamed CSV file
       const blob = await res.blob();
       if (blob.size < 50) {
         alert("No records to export.");
         return;
       }
 
+      // Create object URL for blob download
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
@@ -198,7 +229,6 @@ export function useBatchHistory() {
     historyFrom,     setHistoryFrom,
     historyTo,       setHistoryTo,
     historyDetails,  setHistoryDetails,
-    // Pagination
     currentPage,
     totalPages,
     totalCount,
@@ -217,4 +247,3 @@ export function useBatchHistory() {
     isExporting,
   };
 }
-
