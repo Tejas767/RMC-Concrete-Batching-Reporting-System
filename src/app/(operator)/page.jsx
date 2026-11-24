@@ -17,9 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
 // Layout
-import { PageShell } from "@/components/layout/PageShell";
-import { AppHeader } from "@/components/layout/AppHeader";
-import { TabNav } from "@/components/layout/TabNav";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
 // Feature components
 import { BatchEntryForm } from "@/components/features/entry/BatchEntryForm";
@@ -212,12 +210,11 @@ export default function OperatorDashboard() {
   if (!isSignedIn || user?.role !== "operator") return null;
 
   return (
-    <PageShell>
-      <div className="print:hidden mx-auto w-full max-w-5xl flex flex-col md:flex-row md:items-center md:justify-between gap-6 pt-0 pb-6 md:pb-8">
-        <TabNav activeTab={activeTab} onTabChange={handleTabChange} />
-        <AppHeader />
-      </div>
-
+    <DashboardLayout
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      onPrint={activeTab === "REPORT" ? handlePrint : undefined}
+    >
       {/* Tab content with enter/exit animations */}
       <div className={activeTab === "BILLING" ? "" : "print:hidden"}>
         <AnimatePresence mode="wait">
@@ -227,16 +224,22 @@ export default function OperatorDashboard() {
             initial="initial"
             animate="animate"
             exit="exit"
-            className="mt-8"
           >
             {/* ── ENTRY TAB ─── */}
             {activeTab === "ENTRY" && (
-              <div className="md:mx-auto md:max-w-5xl">
-                <div className="rounded-2xl md:rounded-3xl border border-border bg-white p-5 md:p-8 shadow-card">
-                  <div className="mb-5 flex items-center justify-between">
-                    <h2 className="text-lg md:text-xl font-semibold text-brand-1">Batch Entry</h2>
-                    <span className="rounded-full bg-brand-1/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-brand-1">
-                      ENTRY
+              <div className="w-full max-w-5xl mx-auto">
+                <div className="rounded-2xl md:rounded-3xl border border-stone-200/90 bg-white p-5 md:p-8 shadow-xs">
+                  <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-stone-100">
+                    <div>
+                      <h2 className="text-lg md:text-xl font-bold text-stone-900 tracking-tight">
+                        Batch Production Docket
+                      </h2>
+                      <p className="text-xs text-stone-500 font-medium mt-0.5">
+                        Dispatch parameters, recipe grade & dosing start/stop control
+                      </p>
+                    </div>
+                    <span className="self-start sm:self-auto rounded-full bg-emerald-50 border border-emerald-200 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-emerald-800">
+                      LIVE DOCKET #{entry.docketNo || "---"}
                     </span>
                   </div>
                   <BatchEntryForm
@@ -393,6 +396,6 @@ export default function OperatorDashboard() {
           batchSize={lastBatch?.batchSize || batchSize}
         />
       )}
-    </PageShell>
+    </DashboardLayout>
   );
 }
