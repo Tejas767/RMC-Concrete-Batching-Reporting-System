@@ -35,7 +35,7 @@ const loginAttempts = new Map();
 function checkRateLimit(ip) {
   const now = Date.now();
   const windowMs = 15 * 60 * 1000; // 15 minutes window
-  const maxAttempts = 10;
+  const maxAttempts = 15;
 
   const record = loginAttempts.get(ip);
 
